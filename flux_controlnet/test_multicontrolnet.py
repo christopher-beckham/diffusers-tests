@@ -63,8 +63,7 @@ def setup_function():
 
 def test_torch_tensor_multinet_control_modes(setup_function):
     """
-    This should pass. We pass in two control images but we also
-    pass in two modes, so no problem.
+    This should pass.
     """
     obj = setup_function
     pipe = obj["pipe"]
