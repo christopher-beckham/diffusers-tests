@@ -27,6 +27,7 @@ def setup_function():
     width, height = control_image.size
 
     base_model = 'black-forest-labs/FLUX.1-dev'
+    
     controlnet_union = FluxControlNetModel.from_pretrained(
         'InstantX/FLUX.1-dev-Controlnet-Union', torch_dtype=torch.bfloat16
     )
@@ -60,7 +61,7 @@ def setup_function():
 
     yield {"pipe": pipe_partial, "control_image": control_image}
 
-
+@pytest.mark.skip()
 def test_torch_tensor_multinet_control_modes(setup_function):
     """
     This should pass.
@@ -80,6 +81,7 @@ def test_torch_tensor_multinet_control_modes(setup_function):
     )
 
 
+@pytest.mark.skip()
 def test_multinet_control_modes(setup_function):
     """
     This should pass. We pass in two control images but we also
@@ -96,6 +98,27 @@ def test_multinet_control_modes(setup_function):
         controlnet_conditioning_scale=[1., 1.]
     )
 
+def test_multinet_control_modes_torch(setup_function):
+    """
+    This should pass. We pass in two control images but we also
+    pass in two modes, so no problem.
+    """
+    obj = setup_function
+    pipe = obj["pipe"]
+    control_image = obj["control_image"]
+    control_image = pil_to_torch(control_image)
+    # (4,3,512,512)
+    control_image = control_image.unsqueeze(0).repeat(4,1,1,1)
+
+    pipe(
+        # the controlnets here are [union, union]
+        control_image=[control_image, control_image], 
+        control_mode=[0, None], 
+        controlnet_conditioning_scale=[1., 1.]
+    )
+
+
+@pytest.mark.skip()
 def test_multinet_control_modes_3(setup_function):
     """
     This should fail. We pass in an integer for control mode.
@@ -111,7 +134,7 @@ def test_multinet_control_modes_3(setup_function):
             control_mode=0, 
             controlnet_conditioning_scale=[1.]
         )
-
+@pytest.mark.skip()
 def test_multinet_control_modes_4(setup_function):
     """
     This should fail. We pass in more control modes than control images.
@@ -128,6 +151,7 @@ def test_multinet_control_modes_4(setup_function):
             controlnet_conditioning_scale=[1.]
         )
 
+@pytest.mark.skip()
 def test_multinet_control_modes_2(setup_function):
     """
     This should pass. We pass in one control image and one

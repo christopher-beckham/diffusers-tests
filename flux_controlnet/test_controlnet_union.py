@@ -5,6 +5,8 @@ from diffusers import FluxControlNetPipeline, FluxControlNetModel
 from diffusers import AutoencoderKL
 from functools import partial
 
+from accelerate import infer_auto_device_map, init_empty_weights
+
 @pytest.fixture(scope="session")
 def setup_function():
 
@@ -19,14 +21,16 @@ def setup_function():
     base_model = 'black-forest-labs/FLUX.1-dev'
     controlnet_model = 'InstantX/FLUX.1-dev-Controlnet-Union'
 
-    controlnet = FluxControlNetModel.from_pretrained(
-        controlnet_model, torch_dtype=torch.bfloat16
-    )
-    vae = AutoencoderKL.from_pretrained(base_model, subfolder="vae", torch_dtype=torch.bfloat16)
-    pipe = FluxControlNetPipeline.from_pretrained(
-        base_model, vae=vae, controlnet=controlnet, torch_dtype=torch.bfloat16
-    )
-    pipe.to("cuda")
+    with init_empty_weights():
+
+        controlnet = FluxControlNetModel.from_pretrained(
+            controlnet_model, torch_dtype=torch.bfloat16
+        )
+        vae = AutoencoderKL.from_pretrained(base_model, subfolder="vae", torch_dtype=torch.bfloat16)
+        pipe = FluxControlNetPipeline.from_pretrained(
+            base_model, vae=vae, controlnet=controlnet, torch_dtype=torch.bfloat16
+        )
+        pipe.to("cuda")
 
     prompt = 'A bohemian-style female travel blogger with sun-kissed skin and messy beach waves.'
 
@@ -62,20 +66,31 @@ def test_one_control_bs2_single_mode(setup_function):
     # batch size tracking bug not of my doing.
     pipe(control_image=control_image, control_mode=0, num_images_per_prompt=2)
 
+def test_one_control_singleton(setup_function):
+    """
+    
+    """
+    
+    obj = setup_function
+    pipe = obj["pipe"]
+    control_image = obj["control_image"]
 
-# This currently fails: the internal batch size is 2 but this is because we actually
+
+    pipe(control_image=[control_image], control_mode=0, num_images_per_prompt=1)
+
+
+#This currently fails: the internal batch size is 2 but this is because we actually
 # pass in two control images with [control_image, control_image, and this fails.
-# def test_two_controls_bs1_single_mode(setup_function):
-#     """Even though we pass two control images, a single control mode should be 
-#     interpreted as applying to both of them. This should PASS.
-#     """
+def test_two_controls_bs1_single_mode(setup_function):
+    """Even though we pass two control images, a single control mode should be 
+    interpreted as applying to both of them. This should PASS.
+    """
     
-#     obj = setup_function
-#     pipe = obj["pipe"]
-#     control_image = obj["control_image"]
+    obj = setup_function
+    pipe = obj["pipe"]
+    control_image = obj["control_image"]
 
-#     pipe(control_image=[control_image, control_image], control_mode=0, num_images_per_prompt=1)
-    
+    pipe(control_image=[control_image, control_image], control_mode=0, num_images_per_prompt=1)
 
 # def test_one_image_none_control(setup_function):
 #     """one control image, and we specify the control mode with None.
