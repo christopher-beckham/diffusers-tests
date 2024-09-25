@@ -1,0 +1,186 @@
+import unittest
+import torch
+import numpy as np
+import pdb
+from diffusers.utils import load_image
+from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
+from diffusers.models.controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel
+from diffusers import AutoencoderKL
+
+def pil_to_numpy(image):
+    """to (c,h,w)"""
+    return (np.array(image).astype(np.float32)/255.)
+
+def pil_to_torch(image):
+    return torch.from_numpy(pil_to_numpy(image)).float().swapaxes(2,1).swapaxes(0,1)
+
+@unittest.skip("done")
+class TestFlux(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        control_image = load_image(
+            "https://huggingface.co/InstantX/FLUX.1-dev-Controlnet-Union-alpha/resolve/main/images/canny.jpg"
+        ).resize((512,512))
+        base_model = 'black-forest-labs/FLUX.1-dev'
+        controlnet = FluxControlNetModel.from_pretrained(
+            "Shakker-Labs/FLUX.1-dev-ControlNet-Depth", torch_dtype=torch.bfloat16
+        )
+        vae = AutoencoderKL.from_pretrained(
+            base_model, subfolder="vae", torch_dtype=torch.bfloat16
+        )
+        pipe = FluxControlNetPipeline.from_pretrained(
+            base_model, vae=vae, controlnet=controlnet, torch_dtype=torch.bfloat16
+        ).to("cuda")
+        cls.pipe = pipe
+        cls.image = control_image
+        cls.image_np = pil_to_numpy(control_image)
+        cls.image_t = pil_to_torch(control_image)
+
+        print(f"image: {cls.image}")
+        print(f"image np {cls.image_np.shape}:")
+        print(f"image t {cls.image_t.shape}:")
+
+    @unittest.skip("easy")
+    def test_torch_single_ctrl_1ipp(self):
+        """ctrl image has bs=1, we use 1 image per prompt"""
+        image_t = self.image_t.clone()
+        image_t = image_t.unsqueeze(0)
+        print(f"test_torch: image_t shape: {image_t.shape}")
+        self.pipe(
+            prompt="test",
+            control_image=image_t, 
+            control_mode=0, 
+            num_images_per_prompt=1,
+            num_inference_steps=2
+        )
+        return True
+
+    @unittest.skip("this throws an exception now but its what we wanted, with check_image")
+    # Need to post in the PR a before and after and what the old exception was
+    def test_torch_batched_ctrl_wrong_1ipp(self):
+        """ctrl image has bs=2, we use 1 image per prompt, should fail"""
+        image_t = self.image_t.clone()
+        image_t = image_t.unsqueeze(0).repeat(2,1,1,1)
+        print(f"test_torch: image_t shape: {image_t.shape}")
+        self.pipe(
+            prompt="test",
+            control_image=image_t, 
+            control_mode=0, 
+            num_images_per_prompt=1,
+            num_inference_steps=2
+        )
+        return True
+
+    def test_torch_batched_ctrl_correct_1ipp(self):
+        """ctrl image has bs=2, we use 1 image per prompt, should pass"""
+        image_t = self.image_t.clone()
+        image_t = image_t.unsqueeze(0).repeat(2,1,1,1)
+        print(f"test_torch: image_t shape: {image_t.shape}")
+        self.pipe(
+            prompt=["test", "test"],
+            control_image=image_t, 
+            control_mode=0, 
+            num_images_per_prompt=1,
+            num_inference_steps=2
+        )
+        return True
+
+    def test_torch_batched_ctrl_correct_2ipp(self):
+        """ctrl image has bs=2, we use 2 image per prompt, should pass"""
+        image_t = self.image_t.clone()
+        image_t = image_t.unsqueeze(0).repeat(2,1,1,1)
+        print(f"test_torch: image_t shape: {image_t.shape}")
+        self.pipe(
+            prompt=["test", "test"],
+            control_image=image_t, 
+            control_mode=0, 
+            num_images_per_prompt=2,
+            num_inference_steps=2
+        )
+        return True
+
+
+class TestMultiFlux(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        control_image = load_image(
+            "https://huggingface.co/InstantX/FLUX.1-dev-Controlnet-Union-alpha/resolve/main/images/canny.jpg"
+        ).resize((512,512))
+        base_model = 'black-forest-labs/FLUX.1-dev'
+        controlnet_canny = 'InstantX/FLUX.1-dev-Controlnet-Canny'
+        controlnet = FluxControlNetModel.from_pretrained(
+            controlnet_canny, torch_dtype=torch.bfloat16
+        )
+        multi_controlnet = FluxMultiControlNetModel([controlnet] * 2)
+        vae = AutoencoderKL.from_pretrained(
+            base_model, subfolder="vae", torch_dtype=torch.bfloat16
+        )
+        pipe = FluxControlNetPipeline.from_pretrained(
+            base_model, vae=vae, controlnet=multi_controlnet, torch_dtype=torch.bfloat16
+        ).to("cuda")
+        cls.pipe = pipe
+        cls.image = control_image
+        cls.image_np = pil_to_numpy(control_image)
+        cls.image_t = pil_to_torch(control_image)
+
+        print(f"image: {cls.image}")
+        print(f"image np {cls.image_np.shape}:")
+        print(f"image t {cls.image_t.shape}:")
+
+    @unittest.skip("easy")
+    def test_pil_1ipp(self):
+        """we pass in a list of pil images, just 2 since we have 2 controls"""
+        image_pil = self.image
+        self.pipe(
+            prompt="test",
+            control_image=[image_pil, image_pil], 
+            controlnet_conditioning_scale=[0.6, 0.6],
+            control_mode=0,
+            num_images_per_prompt=1,
+            num_inference_steps=2
+        )
+        return True
+
+    @unittest.skip("works")
+    def test_torch_bs3_1ipp(self):
+        """we pass in a bs=3 torch tensor"""        
+        image_t = self.image_t.clone()
+        image_t = image_t.unsqueeze(0).repeat(3,1,1,1)
+        # matrix:
+        # control_image[0][0..2] have prompts p0..p2
+        # control_image[1][0..2] have prompts p0..p2
+        images =self.pipe(
+            prompt=["1","2","3"],           # len must match bs
+            control_image=[image_t, image_t], 
+            controlnet_conditioning_scale=[0.6, 0.6],
+            control_mode=0,
+            num_images_per_prompt=1,
+            num_inference_steps=2
+        ) 
+        assert len(images[0]) == len(image_t)
+        return True
+
+    def test_torch_bs3_2ipp(self):
+        """we pass in a bs=3 torch tensor but 2 images per prompt"""
+        image_t = self.image_t.clone()
+        image_t = image_t.unsqueeze(0).repeat(3,1,1,1)
+        # matrix:
+        # control_image[0][0..2] have prompts p0..p2
+        # control_image[1][0..2] have prompts p0..p2
+        ns = 2
+        images = self.pipe(
+            prompt=["1","2","3"],           # len must match bs
+            control_image=[image_t, image_t], 
+            controlnet_conditioning_scale=[0.6, 0.6],
+            control_mode=0,
+            num_images_per_prompt=2,
+            num_inference_steps=ns
+        )
+        assert len(images[0]) == len(image_t)*ns
+        breakpoint()
+        
+        return True
+
+    
