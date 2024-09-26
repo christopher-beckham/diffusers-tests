@@ -8,10 +8,11 @@ from diffusers.models.controlnet_flux import FluxControlNetModel, FluxMultiContr
 from diffusers import AutoencoderKL
 
 def pil_to_numpy(image):
-    """to (c,h,w)"""
+    """returns a tensor of shape (h, w, c)"""
     return (np.array(image).astype(np.float32)/255.)
 
 def pil_to_torch(image):
+    """returns a tensor of shape (c, h, w)"""
     return torch.from_numpy(pil_to_numpy(image)).float().swapaxes(2,1).swapaxes(0,1)
 
 @unittest.skip("done")
@@ -138,49 +139,85 @@ class TestMultiFlux(unittest.TestCase):
             control_image=[image_pil, image_pil], 
             controlnet_conditioning_scale=[0.6, 0.6],
             control_mode=0,
+            # this will default to 1024
             num_images_per_prompt=1,
             num_inference_steps=2
         )
         return True
+
+    # -----------
+    # torch tests
+    # -----------
 
     @unittest.skip("works")
     def test_torch_bs3_1ipp(self):
         """we pass in a bs=3 torch tensor"""        
         image_t = self.image_t.clone()
         image_t = image_t.unsqueeze(0).repeat(3,1,1,1)
-        # matrix:
-        # control_image[0][0..2] have prompts p0..p2
-        # control_image[1][0..2] have prompts p0..p2
-        images =self.pipe(
-            prompt=["1","2","3"],           # len must match bs
-            control_image=[image_t, image_t], 
-            controlnet_conditioning_scale=[0.6, 0.6],
-            control_mode=0,
-            num_images_per_prompt=1,
-            num_inference_steps=2
-        ) 
-        assert len(images[0]) == len(image_t)
-        return True
-
-    def test_torch_bs3_2ipp(self):
-        """we pass in a bs=3 torch tensor but 2 images per prompt"""
-        image_t = self.image_t.clone()
-        image_t = image_t.unsqueeze(0).repeat(3,1,1,1)
-        # matrix:
-        # control_image[0][0..2] have prompts p0..p2
-        # control_image[1][0..2] have prompts p0..p2
         ns = 2
         images = self.pipe(
             prompt=["1","2","3"],           # len must match bs
             control_image=[image_t, image_t], 
             controlnet_conditioning_scale=[0.6, 0.6],
             control_mode=0,
+            # no need for w/h since the pipeline just ignores prepare_image for torch dtype
+            num_images_per_prompt=1,
+            num_inference_steps=ns
+        ) 
+        assert len(images[0]) == len(image_t)*ns
+
+    @unittest.skip("works")
+    def test_torch_bs3_2ipp(self):
+        """we pass in a bs=3 torch tensor but 2 images per prompt"""
+        image_t = self.image_t.clone()
+        image_t = image_t.unsqueeze(0).repeat(3,1,1,1)
+        ns = 2
+        images = self.pipe(
+            prompt=["1","2","3"],           # len must match bs
+            control_image=[image_t, image_t], 
+            controlnet_conditioning_scale=[0.6, 0.6],
+            # no need for w/h since the pipeline just ignores prepare_image for torch dtype
+            control_mode=0,
             num_images_per_prompt=2,
             num_inference_steps=ns
         )
         assert len(images[0]) == len(image_t)*ns
-        breakpoint()
-        
-        return True
 
-    
+    # -----------
+    # numpy tests
+    # -----------
+
+    @unittest.skip("")
+    def test_numpy_bs3_1ipp(self):
+        """we pass in a bs=3 torch tensor"""        
+        image_np = np.copy(self.image_np)[None]
+        image_np = np.repeat(image_np, 3, axis=0)
+        images = self.pipe(
+            prompt=["1","2","3"],           # len must match bs
+            control_image=[image_np, image_np], 
+            controlnet_conditioning_scale=[0.6, 0.6],
+            control_mode=0,
+            width=512,
+            height=512,
+            num_images_per_prompt=1,
+            num_inference_steps=2
+        ) 
+        assert len(images[0]) == len(image_np)
+
+    #@unittest.skip("")
+    def test_numpy_bs3_2ipp(self):
+        """we pass in a bs=3 torch tensor but 2 images per prompt"""
+        image_np = np.copy(self.image_np)[None]
+        image_np = np.repeat(image_np, 3, axis=0)
+        ns = 2
+        images = self.pipe(
+            prompt=["1","2","3"],           # len must match bs
+            control_image=[image_np, image_np], 
+            controlnet_conditioning_scale=[0.6, 0.6],
+            control_mode=0,
+            width=512,
+            height=512,
+            num_images_per_prompt=2,
+            num_inference_steps=ns
+        )
+        assert len(images[0]) == len(image_np)*ns        
