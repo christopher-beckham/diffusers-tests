@@ -1,11 +1,12 @@
 import unittest
 import torch
 import numpy as np
-import pdb
+import gc
 from diffusers.utils import load_image
 from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
 from diffusers.models.controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel
 from diffusers import AutoencoderKL
+
 
 def pil_to_numpy(image):
     """returns a tensor of shape (h, w, c)"""
@@ -15,8 +16,14 @@ def pil_to_torch(image):
     """returns a tensor of shape (c, h, w)"""
     return torch.from_numpy(pil_to_numpy(image)).float().swapaxes(2,1).swapaxes(0,1)
 
-@unittest.skip("done")
+#@unittest.skip("done")
 class TestFlux(unittest.TestCase):
+
+    @classmethod
+    def tearDownClass(cls):
+        del cls.pipe
+        torch.cuda.empty_cache()
+        gc.collect()
 
     @classmethod
     def setUpClass(cls):
@@ -42,7 +49,7 @@ class TestFlux(unittest.TestCase):
         print(f"image np {cls.image_np.shape}:")
         print(f"image t {cls.image_t.shape}:")
 
-    @unittest.skip("easy")
+    #@unittest.skip("easy")
     def test_torch_single_ctrl_1ipp(self):
         """ctrl image has bs=1, we use 1 image per prompt"""
         image_t = self.image_t.clone()
@@ -57,22 +64,23 @@ class TestFlux(unittest.TestCase):
         )
         return True
 
-    @unittest.skip("this throws an exception now but its what we wanted, with check_image")
+    #@unittest.skip("this throws an exception now but its what we wanted, with check_image")
     # Need to post in the PR a before and after and what the old exception was
     def test_torch_batched_ctrl_wrong_1ipp(self):
         """ctrl image has bs=2, we use 1 image per prompt, should fail"""
         image_t = self.image_t.clone()
         image_t = image_t.unsqueeze(0).repeat(2,1,1,1)
         print(f"test_torch: image_t shape: {image_t.shape}")
-        self.pipe(
-            prompt="test",
-            control_image=image_t, 
-            control_mode=0, 
-            num_images_per_prompt=1,
-            num_inference_steps=2
-        )
-        return True
+        with self.assertRaises(ValueError):
+            self.pipe(
+                prompt=["test"],
+                control_image=image_t, 
+                control_mode=0, 
+                num_images_per_prompt=1,
+                num_inference_steps=2
+            )
 
+    #@unittest.skip("")
     def test_torch_batched_ctrl_correct_1ipp(self):
         """ctrl image has bs=2, we use 1 image per prompt, should pass"""
         image_t = self.image_t.clone()
@@ -87,6 +95,7 @@ class TestFlux(unittest.TestCase):
         )
         return True
 
+    #@unittest.skip("")
     def test_torch_batched_ctrl_correct_2ipp(self):
         """ctrl image has bs=2, we use 2 image per prompt, should pass"""
         image_t = self.image_t.clone()
@@ -102,7 +111,14 @@ class TestFlux(unittest.TestCase):
         return True
 
 
+#@unittest.skip("")
 class TestMultiFlux(unittest.TestCase):
+
+    @classmethod
+    def tearDownClass(cls):
+        del cls.pipe
+        torch.cuda.empty_cache()
+        gc.collect()
 
     @classmethod
     def setUpClass(cls):
@@ -130,7 +146,7 @@ class TestMultiFlux(unittest.TestCase):
         print(f"image np {cls.image_np.shape}:")
         print(f"image t {cls.image_t.shape}:")
 
-    @unittest.skip("easy")
+    #@unittest.skip("easy")
     def test_pil_1ipp(self):
         """we pass in a list of pil images, just 2 since we have 2 controls"""
         image_pil = self.image
@@ -149,7 +165,7 @@ class TestMultiFlux(unittest.TestCase):
     # torch tests
     # -----------
 
-    @unittest.skip("works")
+    #@unittest.skip("works")
     def test_torch_bs3_1ipp(self):
         """we pass in a bs=3 torch tensor"""        
         image_t = self.image_t.clone()
@@ -164,9 +180,9 @@ class TestMultiFlux(unittest.TestCase):
             num_images_per_prompt=1,
             num_inference_steps=ns
         ) 
-        assert len(images[0]) == len(image_t)*ns
+        assert len(images[0]) == len(image_t)
 
-    @unittest.skip("works")
+    #@unittest.skip("works")
     def test_torch_bs3_2ipp(self):
         """we pass in a bs=3 torch tensor but 2 images per prompt"""
         image_t = self.image_t.clone()
@@ -181,13 +197,13 @@ class TestMultiFlux(unittest.TestCase):
             num_images_per_prompt=2,
             num_inference_steps=ns
         )
-        assert len(images[0]) == len(image_t)*ns
+        assert len(images[0]) == len(image_t)*2
 
     # -----------
     # numpy tests
     # -----------
 
-    @unittest.skip("")
+    #@unittest.skip("")
     def test_numpy_bs3_1ipp(self):
         """we pass in a bs=3 torch tensor"""        
         image_np = np.copy(self.image_np)[None]
@@ -220,4 +236,4 @@ class TestMultiFlux(unittest.TestCase):
             num_images_per_prompt=2,
             num_inference_steps=ns
         )
-        assert len(images[0]) == len(image_np)*ns        
+        assert len(images[0]) == len(image_np)*2
